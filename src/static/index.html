@@ -8,8 +8,16 @@
   </head>
   <body>
     <header>
+      <div class="user-controls">
+        <button id="user-menu-button" class="user-menu-button" aria-label="Open user menu">👤</button>
+        <div id="user-dropdown" class="user-dropdown hidden">
+          <button id="open-login-modal" type="button">Teacher Login</button>
+          <button id="logout-button" type="button" class="hidden">Logout</button>
+        </div>
+      </div>
       <h1>Mergington High School</h1>
       <h2>Extracurricular Activities</h2>
+      <p id="auth-status" class="auth-status">Viewing as student</p>
     </header>
 
     <main>
@@ -23,6 +31,7 @@
 
       <section id="signup-container">
         <h3>Sign Up for an Activity</h3>
+        <p id="signup-hint" class="info-banner">Teacher login required to register or unregister students.</p>
         <form id="signup-form">
           <div class="form-group">
             <label for="email">Student Email:</label>
@@ -44,6 +53,26 @@
     <footer>
       <p>&copy; 2026 Mergington High School</p>
     </footer>
+
+    <div id="login-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="login-title">
+      <div class="modal-content">
+        <h3 id="login-title">Teacher Login</h3>
+        <form id="login-form">
+          <div class="form-group">
+            <label for="username">Username:</label>
+            <input type="text" id="username" required />
+          </div>
+          <div class="form-group">
+            <label for="password">Password:</label>
+            <input type="password" id="password" required />
+          </div>
+          <div class="modal-actions">
+            <button type="submit">Login</button>
+            <button type="button" id="close-login-modal" class="secondary-button">Cancel</button>
+          </div>
+        </form>
+      </div>
+    </div>
 
     <script src="app.js"></script>
   </body>
