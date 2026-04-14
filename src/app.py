@@ -5,11 +5,14 @@ A super simple FastAPI application that allows students to view and sign up
 for extracurricular activities at Mergington High School.
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, JSONResponse
+from pydantic import BaseModel
 import os
 from pathlib import Path
+import json
+import secrets
 
 app = FastAPI(title="Mergington High School API",
               description="API for viewing and signing up for extracurricular activities")
@@ -18,6 +21,43 @@ app = FastAPI(title="Mergington High School API",
 current_dir = Path(__file__).parent
 app.mount("/static", StaticFiles(directory=os.path.join(Path(__file__).parent,
           "static")), name="static")
+
+
+class TeacherLoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+def load_teacher_credentials() -> dict[str, str]:
+    """Load teacher credentials from a local JSON file."""
+    credentials_path = current_dir / "teachers.json"
+    if not credentials_path.exists():
+        return {}
+
+    with credentials_path.open("r", encoding="utf-8") as file:
+        payload = json.load(file)
+
+    return payload.get("teachers", {})
+
+
+teacher_credentials = load_teacher_credentials()
+active_teacher_sessions: dict[str, str] = {}
+
+
+def get_authenticated_teacher(request: Request) -> str | None:
+    session_token = request.cookies.get("teacher_session")
+    if not session_token:
+        return None
+
+    return active_teacher_sessions.get(session_token)
+
+
+def require_teacher_auth(request: Request) -> str:
+    teacher = get_authenticated_teacher(request)
+    if not teacher:
+        raise HTTPException(status_code=401, detail="Teacher authentication required")
+
+    return teacher
 
 # In-memory activity database
 activities = {
@@ -88,9 +128,48 @@ def get_activities():
     return activities
 
 
+@app.get("/auth/status")
+def auth_status(request: Request):
+    teacher = get_authenticated_teacher(request)
+    return {"authenticated": bool(teacher), "username": teacher}
+
+
+@app.post("/auth/login")
+def login_teacher(credentials: TeacherLoginRequest):
+    expected_password = teacher_credentials.get(credentials.username)
+    if expected_password is None or expected_password != credentials.password:
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+
+    session_token = secrets.token_urlsafe(32)
+    active_teacher_sessions[session_token] = credentials.username
+
+    response = JSONResponse({"message": "Teacher logged in successfully"})
+    response.set_cookie(
+        key="teacher_session",
+        value=session_token,
+        max_age=8 * 60 * 60,
+        httponly=True,
+        samesite="lax",
+    )
+    return response
+
+
+@app.post("/auth/logout")
+def logout_teacher(request: Request):
+    session_token = request.cookies.get("teacher_session")
+    if session_token and session_token in active_teacher_sessions:
+        del active_teacher_sessions[session_token]
+
+    response = JSONResponse({"message": "Teacher logged out"})
+    response.delete_cookie("teacher_session")
+    return response
+
+
 @app.post("/activities/{activity_name}/signup")
-def signup_for_activity(activity_name: str, email: str):
+def signup_for_activity(activity_name: str, email: str, request: Request):
     """Sign up a student for an activity"""
+    require_teacher_auth(request)
+
     # Validate activity exists
     if activity_name not in activities:
         raise HTTPException(status_code=404, detail="Activity not found")
@@ -111,8 +190,10 @@ def signup_for_activity(activity_name: str, email: str):
 
 
 @app.delete("/activities/{activity_name}/unregister")
-def unregister_from_activity(activity_name: str, email: str):
+def unregister_from_activity(activity_name: str, email: str, request: Request):
     """Unregister a student from an activity"""
+    require_teacher_auth(request)
+
     # Validate activity exists
     if activity_name not in activities:
         raise HTTPException(status_code=404, detail="Activity not found")
